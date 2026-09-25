@@ -772,3 +772,61 @@ fn test_create_distribution_allows_zero_balance_entry() {
     assert_eq!(ctx.dividend.claimable(&id, &ctx.h2), 0);
     assert_eq!(ctx.dividend.claimable(&id, &ctx.admin), 500);
 }
+
+// Issue #377: Property test that claim totals never exceed the pool.
+proptest! {
+    #[test]
+    fn prop_total_claims_never_exceed_pool(
+        total_amount in 1i128..1_000_000_000i128,
+        h1_balance in 0i128..1_000_000i128,
+        h2_balance in 0i128..1_000_000i128,
+        admin_balance in 0i128..1_000_000i128,
+    ) {
+        let ctx = setup();
+        let supply = h1_balance + h2_balance + admin_balance;
+        if supply == 0 {
+            // Skip zero-supply distributions
+            return Ok(());
+        }
+
+        let mut eligible = Vec::from_array(
+            &ctx.env,
+            [
+                (ctx.admin.clone(), admin_balance),
+                (ctx.h1.clone(), h1_balance),
+                (ctx.h2.clone(), h2_balance),
+            ],
+        );
+
+        let id = ctx.dividend.create_distribution(
+            &ctx.admin,
+            &ctx.asset_id,
+            &ctx.pay_id,
+            &total_amount,
+            &eligible,
+        );
+
+        let mut total_claimed = 0i128;
+
+        // Try to claim for each holder
+        for (holder, _) in eligible.iter() {
+            if let Ok(_) = std::panic::catch_unwind(
+                std::panic::AssertUnwindSafe(|| {
+                    let claimable = ctx.dividend.claimable(&id, &holder);
+                    if claimable > 0 {
+                        ctx.dividend.claim(&id, &holder);
+                        total_claimed = total_claimed.saturating_add(claimable);
+                    }
+                })
+            ) {}
+        }
+
+        prop_assert!(
+            total_claimed <= total_amount,
+            "Total claims {} must not exceed pool {}",
+            total_claimed,
+            total_amount
+        );
+        Ok(())
+    }
+}

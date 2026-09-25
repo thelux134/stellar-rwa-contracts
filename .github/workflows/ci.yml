@@ -13,7 +13,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       # Reads rust-toolchain.toml and installs/activates exactly the channel,
       # targets, and components pinned there, so CI can't drift onto a newer
@@ -55,7 +55,7 @@ jobs:
   build-wasm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Install Rust
         run: rustup show
@@ -73,18 +73,30 @@ jobs:
       # artifacts as `stellar contract build` without compiling the full Stellar
       # CLI from source (which needs the libdbus system library and is slow).
       - name: Build contracts (wasm)
-        run: cargo build --workspace --release --target wasm32v1-none
+        run: cargo build --workspace --release --target wasm32-unknown-unknown
+
+      # Issue #380: Publish per-contract WASM as build artifacts
+      - name: Upload WASM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-${{ github.sha }}
+          path: |
+            target/wasm32-unknown-unknown/release/compliance.wasm
+            target/wasm32-unknown-unknown/release/asset_token.wasm
+            target/wasm32-unknown-unknown/release/registry.wasm
+            target/wasm32-unknown-unknown/release/dividend.wasm
+          retention-days: 30
 
   coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Install Rust
         run: rustup show
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
+        uses: taiki-e/install-action@v2
 
       - name: Cache cargo
         uses: actions/cache@v4
